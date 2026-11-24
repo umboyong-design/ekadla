@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>담임 출결 도우미</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Gothic+A1:wght@700;800&family=IBM+Plex+Sans+KR:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE work: a homeroom teacher's daily tool, dense and exact
+   IDEA the paper 출석부: ruled grid of students x days, marks '/' and 'Ø'
+   PICTURE the class grid itself; each student a cell carrying today's mark
+   COLOUR white ground, cobalt title strip, pale cobalt zones, four category inks
+   TYPE Gothic A1 800 + IBM Plex Sans KR
+   LAYOUT laptop: grid left, sticky editor right; phone: grid, editor as bottom sheet */
+:root{color-scheme:light dark;--bg:light-dark(#ffffff,#0a0d18);--ink:light-dark(#0d1220,#e8ecf8);--cob:light-dark(#1240e0,#7b93ff);--strip:light-dark(#1240e0,#17308f);--zone:light-dark(#eef2ff,#131a30);--line:light-dark(#d4dbef,#27304f);--mute:light-dark(#525d78,#9ba6c6);--card:light-dark(#ffffff,#10152a);--ill:light-dark(#0b7a75,#3cc7bf);--una:light-dark(#d1242a,#ff6b70);--etc:light-dark(#a86200,#f0a640);--exc:light-dark(#6a4fd0,#a796ff);--warnbg:light-dark(#fff4e0,#2a2010)}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;overflow-x:clip}
+h1,h2,h3{font-family:"Gothic A1","IBM Plex Sans KR",sans-serif;letter-spacing:-.02em;line-height:1.15;margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--cob);outline-offset:2px}
+.top{background:var(--strip);color:#fff;padding:18px max(4vw,16px) 0}
+.top .row{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 20px;justify-content:space-between;max-width:1240px;margin:0 auto}
+.top h1{font-size:clamp(26px,3.4vw,36px);font-weight:800}
+.top .cls{font-size:15px;opacity:.9}
+nav{display:flex;gap:2px;overflow-x:auto;max-width:1240px;margin:14px auto 0;scrollbar-width:none}
+nav button{flex:none;border:0;background:transparent;color:#fff;opacity:.8;padding:10px 16px;min-height:44px;border-radius:10px 10px 0 0;font-weight:600;font-size:15px}
+nav button[aria-selected=true]{background:var(--bg);color:var(--ink);opacity:1}
+main{max-width:1240px;margin:0 auto;padding:20px max(4vw,16px) 60px}
+.view{display:none}.view.on{display:block}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:14px}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:10px;min-height:44px;padding:8px 14px;font-weight:500;font-size:15px}
+.btn:hover{border-color:var(--cob)}
+.btn.pri{background:var(--cob);border-color:var(--cob);color:light-dark(#fff,#0a0d18);font-weight:600}
+.btn.sm{min-height:36px;padding:4px 10px;font-size:14px}
+.btn.ghost{border-color:transparent;background:transparent}
+input[type=date],input[type=text],input[type=number],select,textarea{border:1px solid var(--line);background:var(--card);border-radius:10px;min-height:44px;padding:8px 12px;font-size:16px}
+textarea{width:100%;min-height:90px;resize:vertical}
+.tally{display:grid;grid-template-columns:repeat(auto-fit,minmax(6.5em,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.tally div{background:var(--zone);padding:10px 12px}
+.tally b{display:block;font:800 clamp(22px,3vw,30px)/1.1 "Gothic A1",sans-serif;font-variant-numeric:tabular-nums}
+.tally span{font-size:13px;color:var(--mute)}
+.split{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:22px;align-items:start}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.st{position:relative;text-align:left;border:1px solid var(--line);background:var(--card);border-radius:12px;padding:9px 10px 10px;min-height:76px;display:flex;flex-direction:column;gap:2px}
+.st .no{font-size:13px;color:var(--mute);font-variant-numeric:tabular-nums}
+.st .nm{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st .tag{font-size:13px;font-weight:600}
+.st.sel{outline:3px solid var(--cob);outline-offset:-1px}
+.st.has{border-width:2px}
+.c-질병{--c:var(--ill)}.c-미인정{--c:var(--una)}.c-기타{--c:var(--etc)}.c-출석인정{--c:var(--exc)}
+.st.has{border-color:var(--c);background:color-mix(in srgb,var(--c) 9%,var(--card))}
+.st.has .tag{color:var(--c)}
+.st .doc{position:absolute;top:8px;right:9px;font-size:12px;font-weight:600;color:var(--una)}
+.st .str{position:absolute;top:8px;right:9px;font-size:12px;font-weight:700;color:var(--una)}
+.panel{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:16px}
+.zone{background:var(--zone);border-radius:14px;padding:16px}
+.side{position:sticky;top:12px;display:grid;gap:14px}
+.ed h2{font-size:22px;margin-bottom:10px}
+.lbl{font-size:13px;color:var(--mute);margin:12px 0 6px;font-weight:600}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--card);border-radius:10px;min-height:42px;padding:6px 14px;font-size:15px;font-weight:500}
+.seg button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.seg.cat button[aria-pressed=true]{background:var(--c);border-color:var(--c);color:#fff}
+.slots{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.slots button{border:0;border-left:1px solid var(--line);background:var(--card);min-height:56px;padding:4px 0;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;color:var(--mute)}
+.slots button:first-child{border-left:0}
+.slots button b{font:700 20px/1 "Gothic A1",sans-serif;color:var(--ink);height:22px}
+.slots button.on{background:var(--zone)}
+.slots button.on b{color:var(--c,var(--una))}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.chips button{border:1px dashed var(--line);background:transparent;border-radius:20px;padding:4px 10px;font-size:13px;min-height:32px}
+.chk{display:flex;gap:8px;align-items:center;min-height:40px;font-size:15px}
+.chk input{width:20px;height:20px;accent-color:var(--cob)}
+.warn{background:var(--warnbg);border-radius:10px;padding:8px 12px;font-size:14px;margin-top:8px}
+.warn.red{background:color-mix(in srgb,var(--una) 13%,var(--card))}
+.how{font-size:14px;background:var(--zone);border-radius:10px;padding:10px 12px;margin-top:10px}
+.how code,.path{font-family:inherit;font-weight:600;color:var(--cob);overflow-wrap:anywhere}
+ol.steps{margin:6px 0 0;padding-left:1.3em}
+ol.steps li{margin:6px 0;font-size:15px}
+.mk{display:inline-block;min-width:1.4em;text-align:center;font-weight:700}
+.mute{color:var(--mute);font-size:14px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;font-size:14px}
+.mon th,.mon td{border:1px solid var(--line);padding:0;text-align:center;font-variant-numeric:tabular-nums}
+.mon th{background:var(--zone);font-weight:600;font-size:12px;padding:4px 3px;white-space:nowrap}
+.mon th.nm,.mon td.nm{position:sticky;left:0;background:var(--card);text-align:left;padding:4px 8px;white-space:nowrap;z-index:1}
+.mon th.nm{background:var(--zone)}
+.mon td.d{width:30px;height:32px}
+.mon td.d button{width:100%;height:100%;min-height:32px;border:0;background:transparent;font-weight:700;font-size:13px;color:var(--c,var(--ink))}
+.mon td.d.has{background:color-mix(in srgb,var(--c) 14%,var(--card))}
+.mon .off{background:repeating-linear-gradient(135deg,var(--zone) 0 4px,transparent 4px 8px)}
+.mon th.hol{color:var(--una)}
+.mon td.sum{padding:4px 6px;font-weight:600;min-width:2.4em}
+.mon th.dh button{border:0;background:transparent;font:inherit;padding:0;min-height:0}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:14px;margin:10px 0}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:3px;background:var(--c);margin-right:5px;vertical-align:-1px}
+.list{display:grid;gap:8px}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start;border-bottom:1px solid var(--line);padding:10px 0}
+.item input{width:22px;height:22px;margin-top:3px;accent-color:var(--cob)}
+.item.done .t{text-decoration:line-through;color:var(--mute)}
+.item .t{font-weight:600}
+.item .p{font-size:14px;color:var(--mute)}
+.phase{margin:26px 0 4px;display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.phase h3{font-size:20px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:0 36px}
+.qa details{border-bottom:1px solid var(--line);padding:4px 0}
+.qa summary{cursor:pointer;font-weight:600;padding:10px 0;min-height:44px}
+.qa p{margin:0 0 12px;font-size:15px}
+.src{font-size:13px;color:var(--mute)}
+.note td{vertical-align:top;border-bottom:1px solid var(--line);padding:10px 8px;text-align:left}
+.note th{text-align:left;padding:8px;font-size:13px;color:var(--mute);border-bottom:2px solid var(--line)}
+.note textarea{min-height:44px;font-size:15px}
+.cnt{white-space:nowrap;font-variant-numeric:tabular-nums}
+.roster{width:100%}
+.roster th{text-align:left;font-size:13px;color:var(--mute);padding:6px 6px;border-bottom:2px solid var(--line)}
+.roster td{padding:4px 6px;border-bottom:1px solid var(--line)}
+.roster input{width:100%;min-height:40px}
+.roster td.n{width:6.5em}
+.roster td.x{width:1%;white-space:nowrap}
+.roster tr.bad input{border-color:var(--una)}
+.cls button{border:1px solid rgb(255 255 255 / .5);background:transparent;color:#fff;border-radius:10px;min-height:40px;padding:6px 12px;font-size:15px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:10px;font-size:15px;opacity:0;transition:opacity .2s;pointer-events:none;z-index:50}
+.toast.on{opacity:1}
+.sheetbg{display:none}
+h2.sec{font-size:24px;margin:4px 0 6px}
+@media(max-width:900px){.split{grid-template-columns:minmax(0,1fr)}.side{position:static}
+ .ed{position:fixed;left:0;right:0;bottom:0;max-height:86svh;overflow:auto;border-radius:18px 18px 0 0;z-index:40;transform:translateY(105%);transition:transform .22s;box-shadow:0 -8px 30px rgb(0 0 0 / .18);padding-bottom:max(16px,env(safe-area-inset-bottom))}
+ .ed.open{transform:none}.sheetbg.open{display:block;position:fixed;inset:0;background:rgb(0 0 0 / .35);z-index:39}}
+@media(max-width:600px){.grid{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}.slots button b{font-size:17px}.note .stack thead{display:none}.note .stack tr{display:grid;padding:8px 0;border-bottom:1px solid var(--line)}.note .stack td{border:0;padding:3px 0}}
+@media(prefers-reduced-motion:reduce){.ed,.toast{transition:none}}
+</style>
+</head>
+<body>
+<header class="top">
+ <div class="row">
+  <div><h1>담임 출결 도우미</h1></div>
+  <div class="cls" id="clsLabel"></div>
+ </div>
+ <nav role="tablist" id="tabs">
+  <button role="tab" data-v="today" aria-selected="true">오늘 출결</button>
+  <button role="tab" data-v="month">월별 출석부</button>
+  <button role="tab" data-v="note">출결 특기사항</button>
+  <button role="tab" data-v="tasks">담임 업무</button>
+  <button role="tab" data-v="rules">출결 규정 Q&amp;A</button>
+  <button role="tab" data-v="setup">학급 설정</button>
+ </nav>
+</header>
+<main>
+ <section class="view on" id="v-today">
+  <div class="bar">
+   <button class="btn sm" id="dPrev" aria-label="이전 수업일">◀</button>
+   <input type="date" id="dPick">
+   <button class="btn sm" id="dNext" aria-label="다음 수업일">▶</button>
+   <button class="btn sm ghost" id="dToday">오늘</button>
+   <span class="mute" id="dInfo"></span>
+  </div>
+  <div class="tally" id="tally"></div>
+  <div class="split">
+   <div>
+    <p class="mute" style="margin:0 0 10px">결석·지각·조퇴·결과가 있는 학생만 눌러 입력하세요. 나머지는 모두 출석으로 처리됩니다.</p>
+    <div class="grid" id="grid"></div>
+    <div class="legend"><span class="c-질병"><i></i>질병</span><span class="c-미인정"><i></i>미인정</span><span class="c-기타"><i></i>기타</span><span class="c-출석인정"><i></i>출석인정</span><span>증빙 = 결석계·증빙서류 미제출</span></div>
+   </div>
+   <div class="side">
+    <div class="panel ed" id="ed"></div>
+    <div class="zone" id="neis"></div>
+   </div>
+  </div>
+  <div class="sheetbg" id="sheetbg"></div>
+ </section>
+
+ <section class="view" id="v-month">
+  <div class="bar">
+   <button class="btn sm" id="mPrev" aria-label="이전 달">◀</button>
+   <h2 class="sec" id="mTitle" style="margin:0"></h2>
+   <button class="btn sm" id="mNext" aria-label="다음 달">▶</button>
+   <span class="mute">칸을 누르면 그날 출결로 이동, 날짜를 누르면 휴업일 지정·해제</span>
+  </div>
+  <div id="mAlerts"></div>
+  <div class="scroll"><table class="mon" id="mTable" style="width:100%"></table></div>
+  <div class="legend"><span class="c-질병"><i></i>질병</span><span class="c-미인정"><i></i>미인정</span><span class="c-기타"><i></i>기타</span><span class="c-출석인정"><i></i>출석인정(Ø)</span><span>결 결석 · 지 지각 · 조 조퇴 · 과 결과</span></div>
+  <div class="cols" style="margin-top:18px">
+   <div><h3 style="font-size:20px">이달 마감 체크</h3><div class="list" id="mCheck"></div></div>
+   <div><h3 style="font-size:20px">증빙서류 미제출</h3><div id="mDocs"></div></div>
+  </div>
+ </section>
+
+ <section class="view" id="v-note">
+  <h2 class="sec">출결상황 특기사항 초안</h2>
+  <p class="mute" style="margin-top:0" id="noteRange"></p>
+  <div class="warn">기준: 기타결석은 1일이라도 사유 입력 · 출석인정 결석은 사유 미입력(출석으로 처리) · 질병·미인정과 지각·조퇴·결과는 학교장이 정한 기준에 따름 · 출석정지에 따른 미인정 결석은 사유 미입력 · 1년간 결석·지각·조퇴·결과가 없으면 ‘개근’. <span class="src">매뉴얼Ⅰ 37~38쪽</span></div>
+  <div class="bar" style="margin-top:12px"><button class="btn" id="noteCopy">전체 복사(번호·이름·특기사항)</button><span class="mute">나이스 [출결특기사항등록]에서 {개근일괄입력} 후, 개근 아닌 학생만 붙여 넣으면 됩니다.</span></div>
+  <div class="scroll"><table class="note stack" id="noteTable" style="width:100%"></table></div>
+ </section>
+
+ <section class="view" id="v-tasks">
+  <h2 class="sec">담임 나이스 업무 체크리스트</h2>
+  <p class="mute" style="margin-top:0">2026학년도 고등학교용 나이스 교무업무 매뉴얼Ⅰ ‘학급담임교사 업무’ 기준. 체크는 이 브라우저에만 저장됩니다.</p>
+  <div class="cols" id="taskCols"></div>
+ </section>
+
+ <section class="view" id="v-rules">
+  <h2 class="sec">출결 규정 빠른 찾기</h2>
+  <input type="text" id="qSearch" placeholder="예: 지각, 기타결석, 8월, 위탁, 숙려" style="width:100%;margin:8px 0 10px">
+  <div class="qa" id="qa"></div>
+ </section>
+
+ <section class="view" id="v-setup">
+  <div class="cols">
+   <div>
+    <h2 class="sec">학급 정보</h2>
+    <div class="lbl">학년 · 반</div>
+    <div class="bar"><select id="sGrade"><option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option></select><input type="number" id="sRoom" min="1" max="30" style="width:6em"><span>반</span></div>
+    <div class="lbl">적용 교육과정</div>
+    <div class="seg" id="sCurr"><button data-c="2022">2022 개정 (1·2학년)</button><button data-c="2015">2015 개정 (3학년)</button></div>
+    <p class="mute">2022 개정은 출석인정 교시를 ‘Ø’로 표기합니다. 3학년은 2025학년도 방식으로 운영할 수 있습니다.</p>
+    <div class="lbl">하루 수업 교시 수</div>
+    <select id="sPer"><option>6</option><option>7</option><option>8</option></select>
+    <div class="lbl">학생 명단 · 번호와 이름을 바로 고칠 수 있어요</div>
+    <div class="scroll"><table class="roster" id="sTable"></table></div>
+    <div class="bar" style="margin-top:10px"><button class="btn" id="sAdd">학생 추가</button><button class="btn" id="sSort">번호순 정렬</button><button class="btn pri" id="sSave">학급 정보·명단 저장</button></div>
+    <div id="sMsg" class="mute" aria-live="polite"></div>
+    <details style="margin-top:12px"><summary style="cursor:pointer;min-height:44px;padding:10px 0;font-weight:600">명단 한꺼번에 붙여넣기</summary>
+     <p class="mute" style="margin-top:0">한 줄에 한 명씩 “번호 이름” 또는 이름만. 나이스 명렬표에서 복사해 붙여 넣어도 됩니다. 이름이 같은 학생은 기존 출결 기록이 그대로 이어집니다.</p>
+     <textarea id="sList" style="min-height:180px"></textarea>
+     <div class="bar" style="margin-top:8px"><button class="btn" id="sPaste">표로 불러오기</button></div>
+    </details>
+   </div>
+   <div>
+    <h2 class="sec">백업과 초기화</h2>
+    <p class="mute">입력한 출결은 이 기기의 이 브라우저에만 저장됩니다. 다른 기기로 옮기거나 보관하려면 백업 코드를 복사해 두세요. 학생 이름이 포함되니 안전한 곳에 보관하세요.</p>
+    <div class="bar"><button class="btn" id="bCopy">백업 코드 복사</button></div>
+    <div class="lbl">백업 코드 붙여넣기로 복원</div>
+    <textarea id="bIn" placeholder="복사해 둔 백업 코드를 붙여 넣으세요"></textarea>
+    <div class="bar" style="margin-top:10px"><button class="btn" id="bLoad">복원</button><button class="btn" id="bSample">예시 학급으로 되돌리기</button><button class="btn" id="bClear">출결 기록 전체 비우기</button></div>
+    <div id="bMsg" class="mute"></div>
+   </div>
+  </div>
+ </section>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+{
+const $=s=>document.querySelector(s);
+const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad=n=>String(n).padStart(2,'0');
+const ds=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const pd=s=>{const[a,b,c]=s.split('-').map(Number);return new Date(a,b-1,c)};
+const WK='일월화수목금토';
+const TYPES=['결석','지각','조퇴','결과'],CATS=['질병','미인정','기타','출석인정'];
+const SHORT={결석:'결',지각:'지',조퇴:'조',결과:'과'};
+const PRESET={질병:['병원 진료','감기','복통','두통'],미인정:['늦잠','태만','무단','등교 거부'],기타:['부모간병','가정 사정','지원입대 신체검사'],출석인정:['학교장 허가 교외체험학습','경조사','위클래스 상담','학업중단 숙려제','학교 대표 대회 참가']};
+const KEY='hr-att-v1';
+const NAMES='강민준 김서연 김도윤 박지우 이하준 최서윤 정예준 윤지민 장시우 임하은 한주원 오수아 서지호 신채원 권현우 황다은 안준서 송유나 전도현 홍소율 유건우 고은채 문지환 양서아 손태윤 배하린 조승민 백나윤 허재원 남윤서'.split(' ');
+const today=ds(new Date());
+function sample(){
+ const st=NAMES.map((n,i)=>({no:i+1,name:n}));
+ const r={};const put=(d,no,type,cat,reason,doc,sl)=>{(r[d]=r[d]||{})[no]={type,cat,reason,doc,sl}};
+ const base=pd(today);const back=k=>{const d=new Date(base);let c=0;while(c<k){d.setDate(d.getDate()-1);if(d.getDay()%6)c++}return ds(d)};
+ put(back(0),3,'지각','질병','병원 진료 후 등교',false,[0,1,2]);
+ for(let k=0;k<5;k++)put(back(k),26,'결석','미인정','무단',false,null);
+ put(back(3),9,'결석','기타','부모간병',true,null);
+ put(back(5),15,'결과','출석인정','위클래스 상담',true,[5]);
+ put(back(8),21,'결석','출석인정','학교장 허가 교외체험학습',true,null);
+ put(back(9),21,'결석','출석인정','학교장 허가 교외체험학습',true,null);
+ put(back(11),7,'조퇴','질병','두통',true,[5,6,7,8]);
+ put(back(14),12,'지각','미인정','늦잠',false,[0]);
+ put(back(16),4,'결석','질병','감기',false,null);
+ put(back(30),9,'결석','기타','부모간병',true,null);
+ put(back(48),12,'지각','미인정','늦잠',false,[0]);
+ put(back(70),4,'결석','질병','감기',true,null);
+ const days={};for(let k=1;k<22;k++)days[back(k)]={closed:true};
+ return {cls:{grade:1,room:3,curr:'2022',per:7},students:st,recs:r,days,months:{},done:{},notes:{},sample:true};
+}
+let S;
+try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}
+if(!S||!S.students)S=sample();
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+window.claude?.hot?.snapshot?.(()=>S);
+
+const slots=()=>['조회',...Array.from({length:S.cls.per},(_,i)=>(i+1)+'교시'),'종례'];
+const NS=()=>S.cls.per+2;
+const mark=cat=>cat==='출석인정'&&S.cls.curr==='2022'?'Ø':'/';
+function fill(rec){const n=NS();if(rec.type==='결석')return[...Array(n).keys()];if(rec.sl&&rec.sl.length)return rec.sl;if(rec.type==='지각')return[0];if(rec.type==='조퇴')return[n-1];return[1]}
+const isOff=d=>{const x=pd(d);return x.getDay()===0||x.getDay()===6||S.days[d]?.holiday};
+function shift(d,k){const x=pd(d);do{x.setDate(x.getDate()+k)}while(isOff(ds(x)));return ds(x)}
+function toast(t){const e=$('#toast');e.textContent=t;e.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('on'),1800)}
+async function copy(t){try{await navigator.clipboard.writeText(t);toast('복사했습니다')}catch(e){const a=document.createElement('textarea');a.value=t;document.body.append(a);a.select();try{document.execCommand('copy');toast('복사했습니다')}catch(_){toast('복사가 막혀 있어요. 직접 선택해 복사하세요')}a.remove()}}
+function syStart(d){const x=pd(d);const y=x.getMonth()<2?x.getFullYear()-1:x.getFullYear();return y+'-03-01'}
+function syEnd(d){const y=+syStart(d).slice(0,4)+1;return ds(new Date(y,2,0))}
+function streak(no,upto){let c=0,d=upto;if(isOff(d))d=shift(d,-1);const st=syStart(upto);while(d>=st){const r=S.recs[d]?.[no];if(r&&r.type==='결석'&&r.cat==='미인정'){c++;d=shift(d,-1)}else break}return c}
+function lbl(){$('#clsLabel').innerHTML=`<button id="clsEdit" title="학년·반·명단 고치기">${S.cls.grade}학년 ${S.cls.room}반 · ${S.students.length}명 · ${S.cls.curr==='2022'?'2022 개정':'2015 개정'}${S.sample?' · 예시 학급':''} ✎</button>`}
+
+/* ---------- today ---------- */
+let cur=isOff(today)?shift(today,-1):today,selNo=null,draft=null;
+function renderToday(){
+ const x=pd(cur);$('#dPick').value=cur;
+ const day=S.days[cur]||{};const recs=S.recs[cur]||{};
+ $('#dInfo').textContent=`${x.getMonth()+1}월 ${x.getDate()}일(${WK[x.getDay()]})${S.days[cur]?.holiday?' · 휴업일':''} · ${day.closed?'나이스 일출결 마감 완료':'나이스 마감 전'}`;
+ const L=Object.values(recs);const n=S.students.length;const c=t=>L.filter(r=>r.type===t&&r.cat!=='출석인정').length;
+ const ab=L.filter(r=>r.type==='결석'&&r.cat!=='출석인정').length;
+ $('#tally').innerHTML=[['재적',n],['출석',n-ab],['결석',ab],['지각',c('지각')],['조퇴',c('조퇴')],['결과',c('결과')],['출석인정',L.filter(r=>r.cat==='출석인정').length]].map(([a,b])=>`<div><b>${b}</b><span>${a}</span></div>`).join('');
+ $('#grid').innerHTML=S.students.map(s=>{const r=recs[s.no];const k=r&&r.type==='결석'&&r.cat==='미인정'?streak(s.no,cur):0;
+  return `<button class="st ${r?'has c-'+r.cat:''} ${selNo===s.no?'sel':''}" data-no="${s.no}"><span class="no">${s.no}번</span><span class="nm">${esc(s.name)}</span><span class="tag">${r?esc(r.cat+' '+r.type):'출석'}</span>${r&&!r.doc&&r.cat!=='미인정'?'<span class="doc">증빙</span>':''}${k>=3?`<span class="str">연속 ${k}일</span>`:''}</button>`}).join('');
+ renderEd();renderNeis();
+}
+function openEd(no){selNo=no;const r=S.recs[cur]?.[no];draft=r?JSON.parse(JSON.stringify(r)):{type:'결석',cat:'질병',reason:'',doc:false,sl:null};renderToday();$('#ed').classList.add('open');$('#sheetbg').classList.add('open')}
+function closeEd(){selNo=null;draft=null;$('#ed').classList.remove('open');$('#sheetbg').classList.remove('open');renderToday()}
+function warns(r){const w=[];const rs=r.reason.trim();
+ if(r.cat==='기타'&&!rs)w.push(['red','기타결석은 사유가 없으면 나이스에서 {적용}이 되지 않아 마감할 수 없어요. 사유를 꼭 입력하세요.']);
+ if(CATS.some(c=>rs===c||rs===c+r.type)||/^(질병|미인정|기타|출석인정)\s*(결석|지각|조퇴|결과)?$/.test(rs))w.push(['red','‘사유’에는 종류(미인정결석 등)가 아니라 구체적 사유(감기, 늦잠, 교외체험학습 등)를 적어요.']);
+ if(r.cat==='질병')w.push(['','개인정보 보호가 필요한 질병명은 사유에 적지 않아요.']);
+ if(r.cat==='출석인정'&&S.cls.curr==='2022')w.push(['','출석인정은 ‘/’가 아닌 ‘Ø’로 표기해요. 같은 날 질병·미인정·기타 상황이 함께 있으면 출석인정으로는 마감할 수 없어요.']);
+ if(r.type!=='결석')w.push(['','같은 날 지각·조퇴·결과가 겹치면 학업성적관리규정에 따라 하나로만 처리해요.']);
+ return w}
+function renderEd(){
+ const e=$('#ed');
+ if(!draft){e.innerHTML=`<h2>학생을 선택하세요</h2><p class="mute">출결 변동이 있는 학생을 누르면 종류·구분·교시·사유를 입력하고, 나이스에 그대로 옮길 입력 순서를 바로 보여 줍니다.</p><div class="how">오늘 변동이 없다면 아래 <b>‘변동 없음’</b>으로 기록하고, 나이스 <span class="path">[학급담임-학적-출결관리-출결관리-반별일출결마감관리]</span>에서 해당 일을 선택해 {저장}하면 끝입니다.</div>`;return}
+ const s=S.students.find(x=>x.no===selNo);const on=fill(draft);const m=mark(draft.cat);const n=NS();
+ const hint={결석:'결석은 조회~종례 전 교시가 자동 표시됩니다.',지각:'지각이 끝난 마지막 교시를 누르세요. 조회부터 그 교시까지 채워집니다.',조퇴:'조퇴를 시작한 교시를 누르세요. 그 교시부터 종례까지 채워집니다.',결과:'빠진 교시를 하나씩 누르세요.'}[draft.type];
+ e.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h2 style="margin:0">${s.no}번 ${esc(s.name)}</h2><button class="btn sm ghost" id="eX" aria-label="닫기">닫기</button></div>
+ <div class="lbl">종류</div><div class="seg" id="eT">${TYPES.map(t=>`<button data-t="${t}" aria-pressed="${draft.type===t}">${t}</button>`).join('')}</div>
+ <div class="lbl">구분</div><div class="seg cat" id="eC">${CATS.map(c=>`<button class="c-${c}" data-c="${c}" aria-pressed="${draft.cat===c}">${c}</button>`).join('')}</div>
+ <div class="lbl">교시 표시 <span style="font-weight:400">· ${hint}</span></div>
+ <div class="slots c-${draft.cat}" style="--n:${n}" id="eS">${slots().map((t,i)=>`<button data-i="${i}" class="${on.includes(i)?'on':''}" ${draft.type==='결석'?'disabled':''}><b>${on.includes(i)?m:''}</b>${i===0?'조회':i===n-1?'종례':i}</button>`).join('')}</div>
+ <div class="lbl">사유 <span style="font-weight:400">(출결 특기사항의 보조부)</span></div>
+ <input type="text" id="eR" value="${esc(draft.reason)}" placeholder="예: ${PRESET[draft.cat][0]}" style="width:100%">
+ <div class="chips">${PRESET[draft.cat].map(p=>`<button data-p="${esc(p)}">${esc(p)}</button>`).join('')}</div>
+ <label class="chk"><input type="checkbox" id="eD" ${draft.doc?'checked':''}>결석계·증빙서류 받음</label>
+ <div id="eW">${warns(draft).map(([c,t])=>`<div class="warn ${c}">${esc(t)}</div>`).join('')}</div>
+ <div class="bar" style="margin:14px 0 0"><button class="btn pri" id="eSave">저장</button>${S.recs[cur]?.[selNo]?'<button class="btn" id="eDel">출석으로 되돌리기</button>':''}</div>`;
+}
+function stepFor(s,r){const n=NS();const on=fill(r).slice().sort((a,b)=>a-b);const m=mark(r.cat);const nm=i=>slots()[i];let where;
+ if(r.type==='결석')where=`조회~종례 전 교시에 ‘${m}’`;
+ else if(r.type==='지각')where=on.length>1?`${nm(on[on.length-1])}에 ‘${m}’ 표시(조회~${nm(on[on.length-1])} 자동 입력)`:`조회에만 ‘${m}’`;
+ else if(r.type==='조퇴')where=on.length>1?`${nm(on[0])}에 ‘${m}’ 표시(${nm(on[0])}~종례 자동 입력)`:`종례에만 ‘${m}’`;
+ else where=on.map(nm).join('·')+`에 ‘${m}’`;
+ return `<b>${s.no}번 ${esc(s.name)}</b> ${esc(where)} → ‘마감’란 클릭 → 종류 <b>${r.type}</b>, 구분 <b>${r.cat}</b>${r.reason?` → 사유 ‘${esc(r.reason)}’`:''} → {적용}`}
+function renderNeis(){
+ const recs=S.recs[cur]||{};const L=S.students.filter(s=>recs[s.no]);const day=S.days[cur]||{};
+ let h=`<h3 style="font-size:19px">나이스 입력 순서</h3>`;
+ if(!L.length)h+=`<ol class="steps"><li><span class="path">[학급담임-학적-출결관리-출결관리-반별일출결마감관리]</span>에서 {조회}</li><li>${pd(cur).getDate()}일 선택 → {저장}</li></ol>`;
+ else h+=`<ol class="steps"><li><span class="path">[학급담임-학적-출결관리-출결관리-일일출결관리(담임용)]</span>에서 날짜 확인 후 {조회}</li>${L.map(s=>`<li>${stepFor(s,recs[s.no])}</li>`).join('')}<li>{저장} → {출결마감}</li></ol>`;
+ if(S.cls.curr==='2022'&&L.length)h+=`<p class="mute" style="margin:8px 0 0">1·2학년은 교과 교시 출결을 교과담당교사도 입력·마감할 수 있고, 마감 순서는 상관없어요. 교시 위에 마우스를 올리면 과목명(교사)이 보입니다.</p>`;
+ h+=`<div class="bar" style="margin:12px 0 0"><button class="btn ${day.closed?'':'pri'}" id="nClose">${day.closed?'마감 완료 ✓ (취소)':'나이스 마감 완료 표시'}</button>${L.length?'':`<button class="btn" id="nNone">변동 없음으로 마감</button>`}<button class="btn" id="nCopy">학년부 보고용 복사</button></div>
+ <label class="chk"><input type="checkbox" id="nMask" ${S.mask?'checked':''}>보고 문구에 이름 가리기(김OO)</label>`;
+ $('#neis').innerHTML=h;
+}
+function report(){const recs=S.recs[cur]||{};const x=pd(cur);const nm=n=>{const s=S.students.find(z=>z.no===n).name;return S.mask?s[0]+'O'.repeat(Math.max(1,s.length-1)):s};
+ const L=Object.entries(recs).map(([no,r])=>({no:+no,...r}));const ab=L.filter(r=>r.type==='결석'&&r.cat!=='출석인정').length;
+ let t=`[${x.getMonth()+1}/${x.getDate()}(${WK[x.getDay()]}) ${S.cls.grade}-${S.cls.room} 출결] 재적 ${S.students.length}명 / 출석 ${S.students.length-ab}명`;
+ for(const ty of TYPES){const g=L.filter(r=>r.type===ty);if(g.length)t+=`\n${ty} ${g.length}: `+g.map(r=>`${nm(r.no)}(${r.cat})`).join(', ')}
+ if(!L.length)t+='\n특이사항 없음';return t}
+
+/* ---------- month ---------- */
+let mon=cur.slice(0,7);
+function monthDays(ym){const[y,m]=ym.split('-').map(Number);const n=new Date(y,m,0).getDate();return Array.from({length:n},(_,i)=>ym+'-'+pad(i+1)).filter(d=>{const w=pd(d).getDay();return w&&w<6})}
+function tallyFor(no,from,to){const t={결석:{질병:0,미인정:0,기타:0},지각:{질병:0,미인정:0,기타:0},조퇴:{질병:0,미인정:0,기타:0},결과:{질병:0,미인정:0,기타:0},인정:0,reasons:{}};
+ for(const d in S.recs){if(d<from||d>to)continue;const r=S.recs[d][no];if(!r)continue;if(r.cat==='출석인정'){t.인정++;continue}t[r.type][r.cat]++;if(r.cat==='기타'&&r.type==='결석'){const k=r.reason.trim()||'사유 미입력';t.reasons[k]=(t.reasons[k]||0)+1}}return t}
+const sum=o=>o.질병+o.미인정+o.기타;
+function renderMonth(){
+ const[y,m]=mon.split('-').map(Number);$('#mTitle').textContent=`${y}년 ${m}월`;
+ const D=monthDays(mon);const from=mon+'-01',to=mon+'-31';
+ let h=`<thead><tr><th class="nm">번호 이름</th>${D.map(d=>`<th class="dh ${S.days[d]?.holiday?'hol':''}"><button data-hol="${d}" title="휴업일 지정/해제">${+d.slice(8)}<br>${WK[pd(d).getDay()]}</button></th>`).join('')}<th>결석</th><th>지각</th><th>조퇴</th><th>결과</th><th>인정</th></tr></thead><tbody>`;
+ h+=S.students.map(s=>{const t=tallyFor(s.no,from,to);return `<tr><td class="nm">${s.no} ${esc(s.name)}</td>${D.map(d=>{if(S.days[d]?.holiday)return'<td class="d off"></td>';const r=S.recs[d]?.[s.no];return `<td class="d ${r?'has c-'+r.cat:''}"><button data-go="${d}" data-no="${s.no}" aria-label="${d} ${esc(s.name)}">${r?(r.cat==='출석인정'&&S.cls.curr==='2022'?'Ø':SHORT[r.type]):''}</button></td>`}).join('')}<td class="sum">${sum(t.결석)||''}</td><td class="sum">${sum(t.지각)||''}</td><td class="sum">${sum(t.조퇴)||''}</td><td class="sum">${sum(t.결과)||''}</td><td class="sum">${t.인정||''}</td></tr>`}).join('');
+ $('#mTable').innerHTML=h+'</tbody>';
+ const last=D.filter(d=>d<=today&&!S.days[d]?.holiday);
+ const open=last.filter(d=>!S.days[d]?.closed);
+ const al=S.students.map(s=>({s,k:streak(s.no,last.length?last[last.length-1]:today)})).filter(o=>o.k>=3);
+ $('#mAlerts').innerHTML=al.map(o=>`<div class="warn red"><b>${o.s.no}번 ${esc(o.s.name)}</b> 수업일 기준 연속 미인정결석 ${o.k}일. ${o.k>=7?'연속 7일 이상이므로 [학급담임-학적-미인정결석학생관리]에 등록하고 대상학생보고를 진행하세요.':'7일이 되면 [미인정결석학생관리] 등록 대상입니다(아동학대 의심 등 수사의뢰 학생은 7일 미만도 포함). 가정 연락과 내교 안내를 챙기세요.'}</div>`).join('')+(open.length?`<div class="warn">나이스 일출결 마감 표시가 없는 날: ${open.map(d=>+d.slice(8)+'일').join(', ')}</div>`:'');
+ const C=[['days','이달 수업일 모두 일출결 마감',`${last.length-open.length}/${last.length}일 표시됨`],
+  ['subj',S.cls.curr==='2022'?'교과담당교사 과목별·교시별 마감 확인':'과목별 출결 확인','월마감 때 미마감 팝업이 뜨면 교과 선생님께 요청. 담임 대리 마감은 휴직·시간강사 인증서 미발급 등 불가피한 경우만'],
+  ['close','[반별월출결마감관리]에서 월 클릭 → 학기·월·일 확인 → {마감}',m===8?'8월은 1학기·2학기를 따로 마감(1학기 종료일 확인)':m===2?'수업일이 없는 2월은 학교가 마감 여부 결정':'결재완결 후 취소는 출결 담당자의 업무승인 취소 필요'],
+  ['ref','[학생부반영]에서 출결상황 반영','월마감만으로는 학생부에 반영되지 않아요. 전입생 이전 출결도 합산되니 확인'],
+  ['wt','위탁학생 출결 입력(해당 시)','위탁기관이 익월 5일 이내 보내는 개인별 출결 통지서 기준, 소속교 출결과 합산']];
+ $('#mCheck').innerHTML=C.map(([k,t,p])=>{const id=mon+':'+k;return `<label class="item ${S.done[id]?'done':''}"><input type="checkbox" data-done="${id}" ${S.done[id]?'checked':''}><span><span class="t">${esc(t)}</span><br><span class="p">${esc(p)}</span></span></label>`}).join('');
+ const miss=[];for(const d of D)for(const no in S.recs[d]||{}){const r=S.recs[d][no];if(!r.doc&&r.cat!=='미인정')miss.push([d,+no,r])}
+ $('#mDocs').innerHTML=miss.length?`<div class="list">${miss.map(([d,no,r])=>`<div class="item" style="grid-template-columns:auto minmax(0,1fr) auto"><span class="cnt">${+d.slice(5,7)}/${+d.slice(8)}</span><span>${no}번 ${esc(S.students.find(s=>s.no===no)?.name)} · ${r.cat} ${r.type}${r.reason?' · '+esc(r.reason):''}</span><button class="btn sm" data-doc="${d}|${no}">받음</button></div>`).join('')}</div>`:'<p class="mute">이달 미제출 건이 없어요.</p>';
+}
+
+/* ---------- notes ---------- */
+function suggest(t){const any=sum(t.결석)+sum(t.지각)+sum(t.조퇴)+sum(t.결과);if(!any)return'개근';const r=Object.entries(t.reasons);return r.length?r.map(([k,v])=>`${k}(${v}일)`).join(', '):''}
+function renderNote(){const a=syStart(cur),b=syEnd(cur);$('#noteRange').textContent=`${a.slice(0,4)}학년도 (${a.replace(/-/g,'.')}~${b.replace(/-/g,'.')}) 입력된 기록 기준 · 문구는 수정할 수 있고 이 브라우저에 저장됩니다.`;
+ $('#noteTable').innerHTML=`<thead><tr><th>번호 이름</th><th>결석 질·미·기</th><th>지각·조퇴·결과</th><th>인정</th><th>특기사항</th></tr></thead><tbody>`+S.students.map(s=>{const t=tallyFor(s.no,a,b);const v=S.notes[s.no]??suggest(t);const f=o=>`${o.질병}·${o.미인정}·${o.기타}`;
+  return `<tr><td class="cnt"><b>${s.no} ${esc(s.name)}</b></td><td class="cnt">${f(t.결석)}</td><td class="cnt">${sum(t.지각)}·${sum(t.조퇴)}·${sum(t.결과)}</td><td class="cnt">${t.인정}</td><td><textarea data-note="${s.no}" rows="1" placeholder="${t.결석.질병+t.결석.미인정?'필요 시 사유 입력(학교 기준)':''}">${esc(v)}</textarea></td></tr>`}).join('')+'</tbody>'}
+
+/* ---------- tasks ---------- */
+const TASKS=[
+ ['학년초',[['학교생활기록부 생성','[학생부-학교생활기록부-학생부반영]','10'],['학급명렬표·사진명렬표 출력','[학적-기본학적관리-명렬표출력]','11~12'],['학생 인적사항·학적사항 확인','[학적-기본학적관리-기본신상관리]','13'],['학생 사진 등록','[학적-기본학적관리-사진일괄입력]','16'],['학생주소 연계 결과 확인·반영','[학적-기본학적관리-학생주소연계]','18'],['동아리 부서 배정','[학생생활-창의적체험활동-동아리활동관리-부서배정]','64'],['학부모서비스 신청 승인','[학생생활-학부모서비스승인관리]','104']]],
+ ['매일',[['일일출결 입력 → {저장} → {출결마감}','[학적-출결관리-출결관리-일일출결관리(담임용)]','24'],['변동 없는 날은 일괄 마감','[학적-출결관리-출결관리-반별일출결마감관리]','29'],['자율·자치/진로활동 출결 {저장}·{출석마감}','[학생생활-창의적체험활동-○○활동관리] {출결관리}탭','45~46']]],
+ ['매월 초',[['지난달 월출결 마감','[학적-출결관리-출결관리-반별월출결마감관리]','31'],['위탁학생 월별 출결 입력','[학적-위탁･현장실습학생관리-출결관리]','32'],['연속 7일 이상 미인정결석 학생 등록·보고','[학적-미인정결석학생관리]','41']]],
+ ['연중 수시',[['자율·자치/진로활동 누가기록','{누가기록}탭 · 일괄등록 가능','50'],['봉사활동 실적(나눔포털 연계)','[창의적체험활동-봉사활동실적관리]','74'],['행동특성 누가기록','[행동특성및종합의견] {누가기록}탭','97'],['독서활동상황 기록','[학생생활-독서활동상황-독서활동상황기록]','93'],['학급별 수상·자격증 확인','[수상경력-학급별수상관리], [자격증및NCS이수상황]','84~86'],['학교폭력 조치사항: 통보 공문 접수 즉시 입력','[학교폭력조치상황관리]','101'],['PAPS 측정결과 입력, 건강기록부 확인','[{학생건강체력평가}PAPS], [보건-건강기록부관리]','129~140']]],
+ ['학기말',[['창체 {이수시간반영}(기준일=학기종료일) 후 특기사항','{학생부자료기록}탭','47~49'],['동아리 학생부자료·이수시간 확인','[동아리활동관리(담임용)]','68'],['행동특성 및 종합의견 입력','{학생부자료기록}탭','99'],['성적 일람표·세특 확인, 성적통지표','[성적-성적조회/통계], [성적통지표관리]','105~120'],['PAPS 입력마감','[PAPS-마감관리-입력마감]','139']]],
+ ['학년말',[['모든 월 월마감 확인 → 학생부반영(출결상황)','[반별월출결마감관리] → [학생부반영]','39'],['학년말 출결상황·수업일수 확인','[학생부항목별조회] 출결상황(현재학년)','39~40'],['{개근일괄입력} 후 개근 외 학생 특기사항','[출결특기사항등록]','37'],['종업식 이후 출결 특기사항 다시 확인','개근 입력 뒤 변동 가능','38'],['{전체검증} → 검증결과 확인 → 반마감','[자료검증및반마감], [검증결과조회]','123~126']]],
+ ['학적변동 시',[['전출·자퇴 등: 학적변동일까지 일출결 입력·마감 → 월마감','[일일출결관리(담임용)], [반별월출결마감관리]','151'],['전출·자퇴 등: 교과·동아리 담당교사에게 입력 의뢰, 학생부 전체 반영','[학생부반영] 전체','148~153'],['전입: 누가주소 등록, 동아리 배정, 이전 출결자료 확인','[기본신상관리], [부서배정], [이전출결자료등록]','154~']]]];
+function renderTasks(){$('#taskCols').innerHTML=TASKS.map(([ph,L],pi)=>{const dn=L.filter((_,i)=>S.done['t'+pi+'-'+i]).length;return `<div><div class="phase"><h3>${ph}</h3><span class="mute">${dn}/${L.length}</span></div><div class="list">${L.map(([t,p,pg],i)=>{const id='t'+pi+'-'+i;return `<label class="item ${S.done[id]?'done':''}"><input type="checkbox" data-done="${id}" ${S.done[id]?'checked':''}><span><span class="t">${esc(t)}</span><br><span class="p"><span class="path">${esc(p)}</span> · ${pg}쪽</span></span></label>`}).join('')}</div></div>`}).join('')}
+
+/* ---------- rules ---------- */
+const RULES=[
+ ['출석인정은 어떻게 표기하나요?','2026학년도 1·2학년은 출석인정 결석·지각·조퇴·결과에 해당하는 시간(조·종례 포함)을 ‘/’가 아닌 ‘Ø’로 표기합니다. 창체 출결도 마찬가지입니다.','24~25, 45~46'],
+ ['지각은 어디에 표시하나요?','담임은 ‘조회’에만 ‘/’를 표시하고 ‘마감’란 → 종류 ‘지각’, 구분(질병·미인정·기타·출석인정) 선택 → 사유 입력 → {적용}. 지각한 마지막 교시에 표시하면 조회부터 그 교시까지 자동 입력됩니다.','26'],
+ ['조퇴는 어디에 표시하나요?','‘종례’에만 ‘/’를 표시하고 종류 ‘조퇴’로 마감합니다. 조퇴를 시작한 교시에 표시하면 종례까지 자동으로 결시 표시됩니다.','26'],
+ ['같은 날 지각과 조퇴가 함께 있으면?','지각·조퇴·결과가 같은 날 겹치면 학교 학업성적관리규정(먼저 발생한 것, 학생에게 유리한 것 등)에 따라 하나로만 처리합니다. 1·2학년은 출석인정과 질병·미인정·기타가 같은 날 겹치면 출석인정으로 마감할 수 없습니다.','27'],
+ ['기타결석인데 마감이 안 돼요','기타결석은 사유를 입력하지 않으면 {적용}이 되지 않습니다. 입력한 사유는 [출결특기사항등록]의 {기타결석사유가져오기}로 불러와 기재요령에 맞게 다듬습니다. 예) 부모간병(1일)','26~27'],
+ ['‘사유’란에는 무엇을 쓰나요?','미인정결석 같은 종류가 아니라 구체적 사유(교외체험학습, 감기, 늦잠 등)를 씁니다. 학생부 정정 시 증빙자료가 될 수 있습니다. 개인정보 보호가 필요한 질병은 쓰지 않습니다.','27'],
+ ['교과 선생님과 마감 순서는?','1·2학년은 교과담당교사가 과목·교시별로 마감한 뒤 담임이 일·월출결을 마감하는 것이 원칙이지만 순서는 정해져 있지 않습니다. 담임 마감 후에도 교과교사가 교시별 {마감취소} 후 수정할 수 있고, 월출결 마감 후에는 담임이 월마감을 취소해야 수정됩니다.','26'],
+ ['출결 변동이 없는 날도 일일이 마감하나요?','[반별일출결마감관리]에서 해당 일을 선택하고 {저장}하면 됩니다. 공통과목 위주인 1학년에 특히 유용합니다.','29'],
+ ['월마감은 언제, 어떻게?','[반별월출결마감관리]에서 월 클릭 → 학기·월·일 확인 → {마감}. 8월은 1·2학기를 따로 마감하고, 수업일이 없는 2월은 학교가 마감 여부를 정합니다. 마감 후 [학생부반영]을 해야 학생부에 반영됩니다.','31~32'],
+ ['반이 바뀐 학생이 있어요','바뀐 반에서 반 변경일이 속한 달의 월마감을 다시 해야 월 출결 통계가 맞게 나옵니다. 월마감을 취소하면 저장된 월 통계는 모두 삭제됩니다.','31, 38'],
+ ['결재가 끝난 달을 고쳐야 해요','출결 업무담당자가 업무승인을 취소([상신함]에서 {기결문서취소})한 뒤 월마감을 취소할 수 있습니다.','32, 37'],
+ ['위탁학생 출결은?','위탁기관이 익월 초(5일 이내)에 보내는 개인별 출결 통지서로 [위탁･현장실습학생관리-출결관리]에 입력합니다. 월 중간에 위탁을 갔다면 소속교와 위탁기관 출결을 합산해 입력하고, 평가 등 지정 등교일은 소속교가 처리합니다.','32'],
+ ['지각·조퇴·결과 3회는 결석 1일인가요?','아닙니다. 지각·조퇴·결과는 횟수와 관계없이 출석일수에 포함됩니다. 정근상을 시상할 때만 3회를 결석 1일로 환산합니다.','36'],
+ ['출결 특기사항에는 무엇을 쓰나요?','기타결석은 1일이라도 사유 입력, 출석인정 결석은 사유 미입력, 질병·미인정과 지각·조퇴·결과는 학교장이 정한 기준에 따라 필요 시 입력합니다. 학교폭력·교권 보호·학칙에 따른 출석정지의 미인정 결석은 사유를 쓰지 않으며, 해외 봉사·어학연수·교외 대회 등 기재 불가 내용은 쓸 수 없습니다.','37~38'],
+ ['개근은 어떻게 처리하나요?','출석인정 결석은 출석으로 보고, 1년간 결석·지각·조퇴·결과가 한 번도 없으면 ‘개근’. {개근일괄입력} 후 출결이 바뀔 수 있으니 종업식 이후 반드시 다시 확인합니다.','37~38'],
+ ['학년말 수업일수가 적게 나와요','[학급별출결현황]의 수업일수는 시간표 기준이라 학생부와 다를 수 있습니다. 월별 마감 자료를 확인해 잘못된 달을 다시 마감한 뒤 [학생부반영]에서 출결상황을 반영하고 [학생부항목별조회]로 확인합니다.','39~40'],
+ ['미인정결석 학생 등록 기준은?','입학일부터 연속 7일 이상 미인정결석한 학생을 담임이 [미인정결석학생관리]에 등록합니다. 7일 미만이라도 아동학대 의심 등으로 경찰에 수사 의뢰된 학생은 포함합니다. 다시 7일 이상 결석하면 ‘최초미인정결석일자’를 두 번째 시작일로 수정합니다.','41~42'],
+ ['어떤 경우가 미인정 결석인가요?','법령에 따른 출석정지, 가정학습 기간, 범법행위로 인한 결석, 태만·가출·출석 거부 등 고의적 결석, 그 밖에 합당하지 않은 사유의 결석입니다.','44'],
+ ['보호관찰 사회봉사·특별교육 기간은?','출석인정 결석으로 처리합니다.','25'],
+ ['학업중단 숙려기간 출결은?','숙려 기간 중 주 2회 이상 상담 등 조건을 지키면 출석인정 결석으로 처리합니다. 정기시험 기간은 숙려기간에서 제외됩니다.','27'],
+ ['지원입대 신체검사는?','‘기타결석’으로 처리합니다. 지원입대일부터 졸업일까지는 휴학 처리가 원칙입니다.','27'],
+ ['결석 표시를 꼭 교시마다 해야 하나요?','결시(‘/’) 표시가 있어야 자율·자치, 동아리, 진로활동 이수시간에서 제외됩니다. 6교시까지 표시한 뒤 시간표에 7교시가 추가되면 7교시는 결시로 처리되지 않으니 다시 마감합니다.','27'],
+ ['장기결석 학생 출결 증빙이 필요해요','[학급별출결현황]에서 학생 선택 → {개인별출력}. 내교통지서 발송이나 이전학년도 출결 정정대장 작성 시 객관적 증빙자료로 씁니다.','34']];
+function renderRules(){const q=$('#qSearch').value.trim();$('#qa').innerHTML=RULES.filter(r=>!q||(r[0]+r[1]).includes(q)).map(([a,b,p])=>`<details ${q?'open':''}><summary>${esc(a)}</summary><p>${esc(b)} <span class="src">매뉴얼Ⅰ ${p}쪽</span></p></details>`).join('')||'<p class="mute">찾는 내용이 없어요. 다른 낱말로 검색해 보세요.</p>'}
+
+/* ---------- setup ---------- */
+let ros=[];
+function renderSetup(){$('#sGrade').value=S.cls.grade;$('#sRoom').value=S.cls.room;$('#sPer').value=S.cls.per;
+ [...$('#sCurr').children].forEach(b=>b.setAttribute('aria-pressed',b.dataset.c===S.cls.curr));
+ ros=S.students.map(s=>({orig:s.no,no:String(s.no),name:s.name}));
+ $('#sList').value=S.students.map(s=>s.no+' '+s.name).join('\n');$('#sMsg').textContent='';drawRoster()}
+function drawRoster(){
+ $('#sTable').innerHTML=`<thead><tr><th>번호</th><th>이름</th><th></th></tr></thead><tbody>`+ros.map((r,i)=>`<tr data-r="${i}"><td class="n"><input type="number" min="1" inputmode="numeric" id="rn${i}" data-f="no" value="${esc(r.no)}" aria-label="번호"></td><td><input type="text" id="rm${i}" data-f="name" value="${esc(r.name)}" aria-label="이름"></td><td class="x"><button class="btn sm ghost" data-del="${i}" aria-label="${esc(r.name)} 삭제">삭제</button></td></tr>`).join('')+'</tbody>'}
+function checkRoster(){const seen={};const bad=new Set();ros.forEach((r,i)=>{const n=+r.no;if(!Number.isInteger(n)||n<1||!r.name.trim())bad.add(i);if(seen[n]!==undefined){bad.add(i);bad.add(seen[n])}seen[n]=i});
+ document.querySelectorAll('#sTable tr[data-r]').forEach(tr=>tr.classList.toggle('bad',bad.has(+tr.dataset.r)));return bad}
+function remap(m){const R2={};for(const d in S.recs){const o={};for(const k in S.recs[d])if(m[k]!==undefined)o[m[k]]=S.recs[d][k];if(Object.keys(o).length)R2[d]=o}S.recs=R2;
+ const N={};for(const k in S.notes)if(m[k]!==undefined)N[m[k]]=S.notes[k];S.notes=N}
+
+/* ---------- routing & events ---------- */
+const R={today:renderToday,month:renderMonth,note:renderNote,tasks:renderTasks,rules:renderRules,setup:renderSetup};
+let view='today';
+function go(v){view=v;document.querySelectorAll('nav button').forEach(b=>b.setAttribute('aria-selected',b.dataset.v===v));document.querySelectorAll('.view').forEach(e=>e.classList.toggle('on',e.id==='v-'+v));R[v]();lbl()}
+$('#tabs').onclick=e=>{const b=e.target.closest('button');if(b)go(b.dataset.v)};
+$('#dPick').onchange=e=>{if(e.target.value){cur=e.target.value;closeEd()}};
+$('#dPrev').onclick=()=>{cur=shift(cur,-1);closeEd()};
+$('#dNext').onclick=()=>{cur=shift(cur,1);closeEd()};
+$('#dToday').onclick=()=>{cur=today;closeEd()};
+$('#grid').onclick=e=>{const b=e.target.closest('[data-no]');if(b)openEd(+b.dataset.no)};
+$('#sheetbg').onclick=closeEd;
+$('#ed').addEventListener('click',e=>{const t=e.target.closest('button');if(!t||!draft)return;
+ if(t.id==='eX')return closeEd();
+ if(t.dataset.t){draft.type=t.dataset.t;draft.sl=null}
+ else if(t.dataset.c){draft.cat=t.dataset.c}
+ else if(t.dataset.i){const i=+t.dataset.i,n=NS();
+  if(draft.type==='지각')draft.sl=[...Array(i+1).keys()];
+  else if(draft.type==='조퇴')draft.sl=Array.from({length:n-i},(_,k)=>i+k);
+  else{const s=new Set(fill(draft));s.has(i)?s.delete(i):s.add(i);draft.sl=[...s].sort((a,b)=>a-b);if(!draft.sl.length)draft.sl=[i]}}
+ else if(t.dataset.p){draft.reason=t.dataset.p}
+ else if(t.id==='eSave'){draft.reason=$('#eR').value.trim();draft.doc=$('#eD').checked;draft.sl=draft.type==='결석'?null:fill(draft);(S.recs[cur]=S.recs[cur]||{})[selNo]=draft;if(S.days[cur])S.days[cur].closed=false;save();toast('저장했어요. 나이스 입력 순서를 확인하세요');return closeEd()}
+ else if(t.id==='eDel'){delete S.recs[cur][selNo];if(!Object.keys(S.recs[cur]).length)delete S.recs[cur];save();return closeEd()}
+ else return;
+ const r=$('#eR');if(r&&!t.dataset.p)draft.reason=r.value;renderEd()});
+$('#ed').addEventListener('input',e=>{if(e.target.id==='eR'&&draft){draft.reason=e.target.value;$('#eW').innerHTML=warns(draft).map(([c,t])=>`<div class="warn ${c}">${esc(t)}</div>`).join('')}});
+$('#neis').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
+ if(t.id==='nClose'||t.id==='nNone'){const d=S.days[cur]=S.days[cur]||{};d.closed=t.id==='nNone'?true:!d.closed;save();renderToday();if(d.closed){toast('마감 완료로 표시했어요');}}
+ if(t.id==='nCopy')copy(report())});
+$('#neis').addEventListener('change',e=>{if(e.target.id==='nMask'){S.mask=e.target.checked;save()}});
+$('#mPrev').onclick=()=>{const[y,m]=mon.split('-').map(Number);mon=ds(new Date(y,m-2,1)).slice(0,7);renderMonth()};
+$('#mNext').onclick=()=>{const[y,m]=mon.split('-').map(Number);mon=ds(new Date(y,m,1)).slice(0,7);renderMonth()};
+$('#v-month').addEventListener('click',e=>{const t=e.target.closest('button');if(!t)return;
+ if(t.dataset.go){cur=t.dataset.go;go('today');openEd(+t.dataset.no)}
+ else if(t.dataset.hol){const d=S.days[t.dataset.hol]=S.days[t.dataset.hol]||{};d.holiday=!d.holiday;save();renderMonth()}
+ else if(t.dataset.doc){const[d,no]=t.dataset.doc.split('|');S.recs[d][no].doc=true;save();renderMonth()}});
+document.addEventListener('change',e=>{const id=e.target.dataset?.done;if(id){S.done[id]=e.target.checked;save();R[view]()}});
+$('#noteTable').addEventListener('input',e=>{const n=e.target.dataset.note;if(n){S.notes[n]=e.target.value;save()}});
+$('#noteCopy').onclick=()=>{const a=syStart(cur),b=syEnd(cur);copy(S.students.map(s=>`${s.no}\t${s.name}\t${S.notes[s.no]??suggest(tallyFor(s.no,a,b))}`).join('\n'))};
+$('#qSearch').oninput=renderRules;
+$('#sCurr').onclick=e=>{const b=e.target.closest('button');if(b){S.cls.curr=b.dataset.c;save();renderSetup();lbl()}};
+$('#sTable').addEventListener('input',e=>{const f=e.target.dataset.f;if(!f)return;const i=+e.target.closest('tr').dataset.r;ros[i][f]=e.target.value;checkRoster()});
+$('#sTable').addEventListener('click',e=>{const b=e.target.closest('[data-del]');if(!b)return;ros.splice(+b.dataset.del,1);drawRoster();checkRoster();$('#sMsg').textContent='삭제한 학생의 출결 기록은 저장할 때 함께 지워집니다.'});
+$('#sAdd').onclick=()=>{const mx=ros.reduce((a,r)=>Math.max(a,+r.no||0),0);ros.push({orig:null,no:String(mx+1),name:''});drawRoster();const i=ros.length-1;$('#rm'+i).focus()};
+$('#sSort').onclick=()=>{ros.sort((a,b)=>(+a.no||999)-(+b.no||999));drawRoster();checkRoster()};
+$('#sPaste').onclick=()=>{const L=$('#sList').value.split('\n').map(x=>x.trim()).filter(Boolean);if(!L.length)return toast('붙여 넣은 명단이 없어요');
+ const used=new Set();ros=L.map((l,i)=>{const m=l.match(/^(\d+)[\s.,)\t]+(.+)$/);const no=m?m[1]:String(i+1),name=(m?m[2]:l).trim();const ex=S.students.find(s=>s.name===name&&!used.has(s.no));if(ex)used.add(ex.no);return{orig:ex?ex.no:null,no,name}});
+ drawRoster();checkRoster();$('#sMsg').textContent=`${ros.length}명을 표로 불러왔어요. 확인 후 저장을 누르세요.`};
+$('#sSave').onclick=()=>{
+ const g=+$('#sGrade').value,rm=+$('#sRoom').value;
+ if(!Number.isInteger(rm)||rm<1)return toast('반을 숫자로 입력하세요');
+ if(!ros.length)return toast('명단이 비어 있어요');
+ const bad=checkRoster();if(bad.size){$('#sMsg').textContent='빨간 칸을 확인하세요. 번호가 겹치거나, 번호·이름이 비어 있어요.';return}
+ const m={};ros.forEach(r=>{if(r.orig!==null)m[r.orig]=+r.no});remap(m);
+ S.students=ros.map(r=>({no:+r.no,name:r.name.trim()})).sort((a,b)=>a.no-b.no);
+ S.cls.grade=g;S.cls.room=rm;S.cls.per=+$('#sPer').value;S.sample=false;selNo=null;draft=null;save();renderSetup();lbl();$('#sMsg').textContent='저장했어요. 번호를 바꾼 학생의 출결 기록과 특기사항도 새 번호로 옮겼습니다.';toast('저장했어요')};
+$('#clsLabel').onclick=e=>{if(e.target.closest('#clsEdit'))go('setup')};
+$('#bCopy').onclick=()=>copy(JSON.stringify(S));
+$('#bLoad').onclick=()=>{try{const o=JSON.parse($('#bIn').value);if(!o.students||!o.recs)throw 0;S=o;S.done=S.done||{};S.notes=S.notes||{};S.days=S.days||{};save();$('#bMsg').textContent='복원했어요.';renderSetup();lbl()}catch(e){$('#bMsg').textContent='백업 코드 형식이 맞지 않아요.'}};
+$('#bSample').onclick=()=>{S=sample();save();renderSetup();lbl();$('#bMsg').textContent='예시 학급으로 되돌렸어요.'};
+let armed=false;$('#bClear').onclick=e=>{if(!armed){armed=true;e.target.textContent='한 번 더 누르면 삭제';setTimeout(()=>{armed=false;e.target.textContent='출결 기록 전체 비우기'},3000);return}S.recs={};S.days={};S.notes={};save();armed=false;e.target.textContent='출결 기록 전체 비우기';$('#bMsg').textContent='출결 기록을 비웠어요. 명단은 그대로입니다.'};
+const start=()=>go('today');
+window.claude?.hot?.ready?window.claude.hot.ready(start):start();
+}
+</script>
+</body>
+</html>
